@@ -1,0 +1,10 @@
+## Interface: 70100
+## Author: Kollektiv & Teea & schaka
+## Title: Party Ability Bars
+## Notes: Tracks cooldowns of party members
+## SavedVariables: PABDB
+
+libs\LibStub\LibStub.lua
+libs\LibSimpleOptions-1.01\lib.xml
+
+PartyAbilityBars.lua

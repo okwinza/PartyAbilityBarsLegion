@@ -1,0 +1,5 @@
+## Interface: 60200
+## Title: Lib: SimpleOptions-1.01
+## Notes: A library to provide a way to easily create controls for Blizzard's options system. Updated to 1.01 for Party Ability Bars update by Teea.
+## Author: ckknight & Teea
+lib.xml
