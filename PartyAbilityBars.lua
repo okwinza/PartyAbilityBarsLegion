@@ -16,7 +16,7 @@ local SendAddonMessage = SendAddonMessage
 local GetNumSubgroupMembers = GetNumSubgroupMembers
 local CooldownFrame_Set = CooldownFrame_Set
 
-local SPELLIDUPPER = 202052 		-- Teea Note: To find new highest spell ID go here: http://www.wowhead.com/spells?filter=cr=14;crs=2;crv=202052
+local SPELLIDUPPER = 232434 		-- Teea Note: To find new highest spell ID go here: http://www.wowhead.com/spells?filter=cr=14;crs=2;crv=232434
 local CommPrefix  = "PABop31ms337x" -- Receive ability and cooldown
 local CommPrefix2 = "PABm4d4f4k4l0" -- Send GUID for syncing
 local CommPrefix3 = "PABl0lz3r1n4h" -- Receive GUID for syncing
@@ -52,6 +52,19 @@ local iconPaths = {
 for k in pairs(iconPaths) do _iconPaths[GetSpellInfo(k)] = select(3,GetSpellInfo(k)) end
 iconPaths = _iconPaths
 
+local validUnits = {
+	["player"] = true,
+	["pet"] = true,
+	["party1"] = true,
+	["party2"] = true,
+	["party3"] = true,
+	["party4"] = true,
+	["partypet1"] = true,
+	["partypet2"] = true,
+	["partypet3"] = true,
+	["partypet4"] = true,
+}
+
 local defaultAbilities = {
 	["DRUID"] = {
 		["ALL"] = {	-- All specs
@@ -86,15 +99,19 @@ local defaultAbilities = {
 	},
 	["MAGE"] = 	{
 		["ALL"] = {	-- All specs
+			{198111, 45}, -- Temporal Shield
 			{2139, 24}, 	-- Counterspell
 			{45438, 240},   -- Ice Block
 		},
 		[62] = {	-- Arcane
 		},
 		[63] = {	-- Fire
+			{31661, 20}, -- Dragon's Breath
 			{86949, 300}, -- Cauterize
+			{113724, 45}, -- Ring of Frost
 		},
 		[64] = {	-- Frost
+			{113724, 45}, -- Ring of Frost
 		},
 	},
 	["PALADIN"] = {
@@ -106,13 +123,18 @@ local defaultAbilities = {
 			{20066, 15}, -- Repentance
 			{150630, 300, 2}, -- Hand of Protection
 			{6940, 150, 2}, -- Blessing of Sacrifice
+			{115750, 90}, -- Blinding Light
+			{642, 300}, -- Divine Shield
+			{31842, 120}, -- Avenging Wrath
 		},
 		[66] = {	-- Protection
 			{96231, 15}, -- Rebuke
 			{6940, 150}, -- Blessing of Sacrifice
 		},
 		[70] = {	-- Retribution
+			{642, 240}, -- Divine Shield
 			{96231, 15},  -- Rebuke
+			{115750, 90}, -- Blinding Light
 			{150630, 300}, -- Hand of Protection
 		},
 	},
@@ -126,6 +148,10 @@ local defaultAbilities = {
 			{62618, 180}, -- Power Word: Barrier
 		},
 		[257] = {	-- Holy
+			{213602, 30}, -- Greater Fade
+			{197268, 45}, -- Ray of Hope
+			{19236, 90}, -- Desperate Prayer
+			{47788, 240}, -- Guardian Spirit
 		},
 		[258] = {	-- Shadow
 			{47585, 120},  	-- Dispersion
@@ -169,22 +195,28 @@ local defaultAbilities = {
 			{6789, 45}, -- Mortal Coil
 		},
 		[265] = {	-- Affliction
+			{108416, 60}, -- Dark Pact
+			{212295, 45}, -- Nether Ward
 		},
 		[266] = {	-- Demonology
 		},
 		[267] = {	-- Destruction
 			{108416, 60}, -- Dark Pact
+			{212295, 45}, -- Nether Ward
 		},
 	},
 	["WARRIOR"] = {
 		["ALL"] = {	-- All specs
 			{6552, 15}, 	-- Pummel
-			{5246, 90}, 	-- Intimidating Shout
 		},
 		[71] = {	-- Arms
 			{236077, 30}, -- Disarm
+			{107570, 30}, -- Storm Bolt
+			{5246, 90}, 	-- Intimidating Shout
+			{118038, 180}, -- Die by the Sword
 		},
 		[72] = {	-- Fury
+			{5246, 90}, 	-- Intimidating Shout
 		},
 		[73] = {	-- Protection
 		},
@@ -198,8 +230,11 @@ local defaultAbilities = {
 		[250] = {	-- Blood
 		},
 		[251] = {	-- Frost
+			{212552, 45}, -- Wraith Walk
 		},
 		[252] = {	-- Unholy
+			{108194, 45}, -- Asphyxiate
+			{47482, 30}, -- Leap (Interrupt pet)
 		},
 	},
 	["MONK"] = {
@@ -212,6 +247,19 @@ local defaultAbilities = {
 		},
 		[270] = {	-- Mistweaver
 			{116849, 180}, 	-- Life Cocoon
+		},
+	},
+	["DEMONHUNTER"] = {
+		["ALL"] = {
+			{198589, 60}, -- Blur
+			{183752, 15}, -- Consume Magic
+			{217832, 15}, -- Imprison
+		},
+		[577] = { -- Havoc
+
+		},
+		[581] = { -- Vengeance
+
 		},
 	}
 }
@@ -442,7 +490,7 @@ function PAB:CreateAnchors()
 		anchor:SetMovable(true)
 		anchor:Show()
 		anchor.icons = {}
-		anchor.HideIcons = function() for k,icon in ipairs(anchor.icons) do icon:Hide(); icon.shouldShow = nil end end
+		anchor.HideIcons = function() for k,icon in ipairs(anchor.icons) do icon:Hide() end end
 		anchor:SetScript("OnMouseDown",function(self,button) if button == "LeftButton" and not db.attach then self:StartMoving() end end)
 		anchor:SetScript("OnMouseUp",function(self,button) if button == "LeftButton" and not db.attach then self:StopMovingOrSizing(); PAB:SavePositions() end end)
 		anchors[i] = anchor
@@ -453,11 +501,12 @@ function PAB:CreateAnchors()
 	end
 end
 
+-- creates a new raw frame icon that can be used/reused to show cooldowns
 local function CreateIcon(anchor)
 	local icon = CreateFrame("Frame",anchor:GetName().."Icon".. (#anchor.icons+1),PABIcons)
 	icon:SetHeight(30)
 	icon:SetWidth(30)
-		
+
 	local cd = CreateFrame("Cooldown",icon:GetName().."Cooldown",icon,"CooldownFrameTemplate")
 	icon.cd = cd
 	
@@ -551,14 +600,10 @@ local function CreateIcon(anchor)
 	return icon
 end
 
-function PAB:AppendIcon(icons,anchor)
+-- adds a new icon to icon list of anchor
+function PAB:AddIcon(icons,anchor)
 	local newicon = CreateIcon(anchor)
 	iconlist[#iconlist+1] = newicon
-	if #icons == 0 then
-		newicon:SetPoint(db.growLeft and "TOPRIGHT" or "TOPLEFT",anchor,db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT")
-	else
-		newicon:SetPoint(db.growLeft and "RIGHT" or "LEFT",icons[#icons],db.growLeft and "LEFT" or "RIGHT")
-	end
 	icons[#icons+1] = newicon
 	return newicon
 end
@@ -568,14 +613,13 @@ function PAB:RequestSync()
 	if self.useCrossAddonCommunication then SendAddonMessage(CommPrefix2, pGUID .. "|" .. GetTime(), "PARTY") end
 end
 
-function PAB:ShowUsedAnchors()
+-- hides anchors currently not in use due to too few party members
+function PAB:ToggleAnchorDisplay()
 	-- Player (Test):
 	if db.showSelf and anchors[5] then anchors[5]:Show() end
 	-- Party members:
 	for i=1,GetNumSubgroupMembers() do anchors[i]:Show() end
-end
 
-function PAB:HideUnusedAnchors()
 	for k=GetNumSubgroupMembers()+1,4 do
 		anchors[k]:Hide()
 		anchors[k].HideIcons()
@@ -586,32 +630,28 @@ function PAB:HideUnusedAnchors()
 	end
 end
 
-function PAB:HideUnusedIcons(numIcons,icons)
-	for j=numIcons,#icons do
-		icons[j]:Hide()
-		icons[j].shouldShow = nil
-	end
-end
-
+-- shuffles raw icon frames around on group update, changed settings, etc
+-- also sets attributes for each icon frame
 function PAB:UpdateAnchor(unit, i)
 		local _,class = UnitClass(unit)
 		if not class then return end
 		local anchor = anchors[i]
 		anchor.GUID = UnitGUID(unit)
 		if not anchor.GUID then return end
-		anchor.class = select(2,UnitClass(unit))
+		anchor.class = class
 		local icons = anchor.icons 
 		local numIcons = 1
 		-- PvP Trinket:
 		if db.showTrinket then
 			local ability, id, cooldown = PvPTrinket.ability, PvPTrinket.id, PvPTrinket.cooldown
-			local icon = icons[numIcons] or self:AppendIcon(icons,anchor)
+			local icon = icons[numIcons] or self:AddIcon(icons,anchor)
 			icon.texture:SetTexture(self:FindAbilityIcon(ability, id))
 			icon.GUID = anchor.GUID
 			icon.ability = ability
 			icon.abilityID = id
 			icon.cooldown = cooldown
-			icon.shouldShow = true
+			icon.showing = true
+
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
 				icon.SetTimer(activeGUIDS[icon.GUID][ability].starttime,activeGUIDS[icon.GUID][ability].cooldown)
@@ -621,13 +661,13 @@ function PAB:UpdateAnchor(unit, i)
 			numIcons = numIcons + 1
 		elseif icons[1] and icons[1].ability == PvPTrinketName then
 			icons[1]:Hide()
-			icons[1].shouldShow = nil
+			icons[1].showing = nil
 			table.remove(icons, 1)
 		end
 		-- Abilities [All Specs]:
 		for abilityIndex, abilityTable in pairs(db.abilities[class]["ALL"]) do
 			local ability, id, cooldown, maxcharges = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges
-			local icon = icons[numIcons] or self:AppendIcon(icons,anchor)
+			local icon = icons[numIcons] or self:AddIcon(icons,anchor)
 			icon.texture:SetTexture(self:FindAbilityIcon(ability, id))
 			icon.GUID = anchor.GUID
 			icon.ability = ability
@@ -635,7 +675,7 @@ function PAB:UpdateAnchor(unit, i)
 			icon.cooldown = cooldown
 			icon.maxcharges = maxcharges
 			icon.chargesText:SetText(maxcharges or "")
-			icon.shouldShow = true
+
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
 				icon.SetTimer(activeGUIDS[icon.GUID][ability].starttime,activeGUIDS[icon.GUID][ability].cooldown)
@@ -649,7 +689,7 @@ function PAB:UpdateAnchor(unit, i)
 		if unitSpec and unitSpec ~= "0" and unitSpec ~= "ALL" and unitSpec ~= "nil" then
 			for abilityIndex, abilityTable in pairs(db.abilities[class][unitSpec]) do
 				local ability, id, cooldown, maxcharges = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges
-				local icon = icons[numIcons] or self:AppendIcon(icons,anchor)
+				local icon = icons[numIcons] or self:AddIcon(icons,anchor)
 				icon.texture:SetTexture(self:FindAbilityIcon(ability, id))
 				icon.GUID = anchor.GUID
 				icon.ability = ability
@@ -657,7 +697,8 @@ function PAB:UpdateAnchor(unit, i)
 				icon.cooldown = cooldown
 				icon.maxcharges = maxcharges
 				icon.chargesText:SetText(maxcharges or "")
-				icon.shouldShow = true
+				icon.spec = true
+
 				activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 				if activeGUIDS[icon.GUID][icon.ability] then
 					icon.SetTimer(activeGUIDS[icon.GUID][ability].starttime,activeGUIDS[icon.GUID][ability].cooldown)
@@ -667,7 +708,41 @@ function PAB:UpdateAnchor(unit, i)
 				numIcons = numIcons + 1
 			end
 		end
-		self:HideUnusedIcons(numIcons,icons)
+		self:ToggleIconDisplay(i)
+end
+
+-- responsible for actual anchoring of icons
+function PAB:ToggleIconDisplay(i)
+	local anchor = anchors[i]
+	local icons = anchor.icons
+	local count = 1
+	local lastActiveIndex = 0;
+	-- hiding all icons before anchoring and deciding whether to show them
+	for k, icon in pairs(icons) do
+		if icon and icon.ability then
+			if icon.spec then
+				icon.showing = (not db.hidden and icon.seen) or (db.hidden and activeGUIDS[icon.GUID][icon.ability])
+			else
+				icon.showing = activeGUIDS[icon.GUID][icon.ability] or not db.hidden
+			end
+			icon:ClearAllPoints()
+			icon:Hide()
+		end
+	end
+
+	for k, icon in pairs(icons) do
+		if icon and icon.ability and icon.showing then
+			if count == 1 then
+				icon:SetPoint(db.growLeft and "TOPRIGHT" or "TOPLEFT", anchor, db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT")
+			else
+				icon:SetPoint(db.growLeft and "RIGHT" or "LEFT", icons[lastActiveIndex], db.growLeft and "LEFT" or "RIGHT")
+			end
+			lastActiveIndex = k
+			count = count + 1
+			icon:Show()
+		end
+	end
+	--self:ToggleAnchorDisplay()
 end
 
 function PAB:UpdateAnchors()
@@ -678,46 +753,17 @@ function PAB:UpdateAnchors()
 		local unit = "party"..i
 		self:UpdateAnchor(unit, i)
 	end
-	self:ShowUsedAnchors()
-	self:HideUnusedAnchors()
 
+	self:ToggleAnchorDisplay()
 	self:ApplyAnchorSettings()
-end
-
-function PAB:UpdateIcon(unit, i)
-		local _,class = UnitClass(unit)
-		if not class then return end
-		local anchor = anchors[i]
-		local icons = anchor.icons
-		local count = 1
-		local lastActiveIconIndex = 0
-		for k, icon in pairs(icons) do
-			if icon and icon.ability then
-				icon:ClearAllPoints()
-			end
-		end
-		for k, icon in pairs(icons) do
-			if icon and icon.ability then
-				if not db.hidden and k == 1 or db.hidden and count == 1 and icon.active then
-					count = count + 1
-					lastActiveIconIndex = k
-					icon:SetPoint(db.growLeft and "TOPRIGHT" or "TOPLEFT", anchor, db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT")
-				elseif not db.hidden or db.hidden and count > 1 and icon.active then
-					icon:SetPoint(db.growLeft and "RIGHT" or "LEFT", icons[not db.hidden and k-1 or db.hidden and lastActiveIconIndex], db.growLeft and "LEFT" or "RIGHT")
-					count = count + 1
-					lastActiveIconIndex = k
-				end
-			end
-		end
 end
 
 function PAB:UpdateIcons()
 	-- Player (Test):
-	if db.showSelf and anchors[5] then self:UpdateIcon("player", 5) end
+	if db.showSelf and anchors[5] then self:ToggleIconDisplay(5) end
 	-- Party members:
 	for i=1, GetNumSubgroupMembers() do
-		local unit = "party"..i
-		self:UpdateIcon(unit, i)
+		self:UpdateAnchor(i)
 	end
 end
 
@@ -734,19 +780,9 @@ function PAB:ApplyAnchorSettings()
 		PABIcons:Show()
 	end
 
-	for k,v in ipairs(anchors) do
-		for k,v in ipairs(v.icons) do
-			if db.hidden and not v.active then
-				v:Hide()
-			elseif v.shouldShow then
-				v:Show()
-			end
-		end
-	end	
-	
-	if db.lock then PABAnchor:Hide() else PABAnchor:Show() end
-
 	self:UpdateIcons()
+
+	if db.lock then PABAnchor:Hide() else PABAnchor:Show() end
 end
 
 function PAB:GroupUpdate()
@@ -782,6 +818,12 @@ function PAB:PLAYER_ENTERING_WORLD()
 	self:UpdateAnchors()
 end
 
+function PAB:COMBAT_LOG_EVENT_UNFILTERED(timestamp, event, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, auraType)
+	if(event == "SPELL_AURA_APPLIED" ) then
+		self:StartCooldown(spellName, self:GetUnitByGUID(sourceName))
+	end
+end
+
 function PAB:FindAbilityByName(abilities, name)
 	if abilities then
 		for i, v in pairs(abilities) do
@@ -790,16 +832,47 @@ function PAB:FindAbilityByName(abilities, name)
 	end
 end
 
-function PAB:CheckAbility(anchor, ability, cooldown, pIndex, addonMsg)
+function PAB:GetUnitByGUID(guid)
+	for k,v in pairs(validUnits) do
+		if UnitGUID(k) == guid then
+			return k
+		end
+	end
+end
+
+function PAB:StartCooldown(spellName, unit, cooldown)
+	if not unit then return end -- in case unit is bugged
+	local index = match(unit, "party[pet]*([1-4])")
+
+	if unit == "player" or unit == "pet" then
+		unit = "player"
+		index = 5
+	elseif index then
+		unit = "party"..index
+	end
+
+	local anchor = anchors[tonumber(index)]
+	if not anchor or not index then return end
+
+	local _,class = UnitClass(unit)
+	local spec = tostring(self:GetSpecByUnit(unit))
+	local cAbility = self:FindAbilityByName(db.abilities[class]["ALL"], spellName) or self:FindAbilityByName(db.abilities[class][spec], spellName)
+	if cooldown and cAbility then cAbility.cooldown = cooldown end
+	if spellName == StoneformName or spellName == WillOfTheForsakenName or spellName == EveryManForHimselfName then
+		spellName = PvPTrinketName
+		cAbility = {cooldown = 30}
+	end
+
+	self:TrackCooldown(anchor, spellName, cAbility and cAbility.cooldown or nil)
+end
+
+function PAB:TrackCooldown(anchor, ability, cooldown)
 	for k,icon in ipairs(anchor.icons) do
 		if cooldown then
 			-- Direct cooldown
-			if icon.ability == ability and icon.shouldShow and (not icon.maxcharges or not addonMsg) then
-				if addonMsg and icon.active and icon.starttime and icon.starttime > 0 then
-					icon.Start(cooldown - (GetTime() - icon.starttime))
-				else
-					icon.Start(cooldown)
-				end
+			if icon.ability == ability and (not icon.maxcharges) then
+				icon.seen = true
+				icon.Start(cooldown)
 			end
 			-- Grouped Cooldowns
 			--[[
@@ -811,7 +884,7 @@ function PAB:CheckAbility(anchor, ability, cooldown, pIndex, addonMsg)
 			]]
 		end
 		-- Cooldown resetters
-		if not addonMsg and cooldownResetters[ability] then
+		if cooldownResetters[ability] then
 			if type(cooldownResetters[ability]) == "table" then
 				--for k in pairs(cooldownResetters[ability]) do if k == icon.ability then icon.Stop(); break end end
 				if cooldownResetters[ability][icon.ability] then icon.Stop() end
@@ -823,20 +896,11 @@ function PAB:CheckAbility(anchor, ability, cooldown, pIndex, addonMsg)
 end
 
 function PAB:CHAT_MSG_ADDON(prefix, message, dist, sender)
-	if dist == "PARTY" and sender ~= pName then
+	if dist == "RAID" and sender ~= pName then
 	--if dist == "PARTY" then -- debug only
 		if prefix == CommPrefix then
 			local GUID, ability, cooldown, spellID = match(message,"(.+)|(.+)|(.+)|(.+)")
-			if syncGUIDS[GUID] then
-				if spellID then ability = GetSpellInfo(spellID) end
-				if ability == StoneformName or ability == WillOfTheForsakenName then
-					ability = PvPTrinketName
-					cooldown = 30
-				elseif ability == EveryManForHimselfName then
-					ability = PvPTrinketName
-				end
-				self:CheckAbility(syncGUIDS[GUID], ability, cooldown, nil, true)
-			end
+			self:StartCooldown(ability, self:GetUnitByGUID(GUID), cooldown)
 		elseif prefix == CommPrefix2 then
 			local GUID, guidTime = match(message, "(.+)|(.+)")
 			SendAddonMessage(CommPrefix3, pGUID, "PARTY")
@@ -870,49 +934,7 @@ function PAB:UNIT_SPELLCAST_SUCCEEDED(unit, ability)
 	--if syncGUIDS[UnitGUID(unit)] then return end  -- with this it won't use the local detection for other PAB users but instead it will rely on syncing with other PAB users
 	-- Send stuff to other PAB users:
 	if ability then
-		-- Player or player pet:
-		if db.showSelf then
-			if unit == "player" or unit == "pet" then
-				local _,class = UnitClass("player")
-				-- All specs:
-				local cAbility = self:FindAbilityByName(db.abilities[class]["ALL"], ability)
-				-- PvP Trinket:
-				if ability == StoneformName or ability == WillOfTheForsakenName then
-					ability = PvPTrinketName
-					cAbility = {cooldown = 30}
-				elseif ability == EveryManForHimselfName or ability == PvPTrinketName then
-					ability = PvPTrinketName
-					cAbility = PvPTrinket
-				end
-				self:CheckAbility(anchors[5], ability, cAbility and cAbility.cooldown or nil, 5)
-				-- Current spec:
-				local unitSpec = tostring(self:GetSpecByUnit("player"))
-				local cAbility = self:FindAbilityByName(db.abilities[class][unitSpec], ability)
-				if cAbility then self:CheckAbility(anchors[5], ability, cAbility and cAbility.cooldown or nil, 5) end
-			end
-		end
-		-- Party or party pet:
-		local pIndex = match(unit, "party[pet]*([1-4])")			
-		if pIndex then
-			local _,class = UnitClass("party"..pIndex)
-			if class then
-				-- All specs:
-				local cAbility = self:FindAbilityByName(db.abilities[class]["ALL"], ability)
-				-- PvP Trinket:
-				if ability == StoneformName or ability == WillOfTheForsakenName then
-					ability = PvPTrinketName
-					cAbility = {cooldown = 30}
-				elseif ability == EveryManForHimselfName or ability == PvPTrinketName then
-					ability = PvPTrinketName
-					cAbility = PvPTrinket
-				end
-				self:CheckAbility(anchors[tonumber(pIndex)], ability, cAbility and cAbility.cooldown or nil, pIndex)
-				-- Current spec:
-				local unitSpec = tostring(self:GetSpecByUnit("party"..pIndex))
-				local cAbility = self:FindAbilityByName(db.abilities[class][unitSpec], ability)
-				if cAbility then self:CheckAbility(anchors[tonumber(pIndex)], ability, cAbility and cAbility.cooldown or nil, pIndex) end
-			end
-		end
+		self:StartCooldown(ability, unit);
 	end
 end
 
@@ -929,13 +951,12 @@ local function PAB_OnUpdate(self,elapsed)
 	if time > 0.05 then
 		-- Inspection stuff:
 		PAB:ProcessInspectQueue()
-
-		--  Update Icons
+		--  Update icon activity
 		for k,icon in ipairs(iconlist) do
 			if icon.active then
 				icon.timeleft = icon.starttime + icon.cooldown - GetTime()
 				if icon.timeleft <= 0 then
-					if db.hidden then icon:Hide() end
+					if not icon.showing then icon:Hide() end
 					if activeGUIDS[icon.GUID] then activeGUIDS[icon.GUID][icon.ability] = nil end -- There was error when activeGUIDS[icon.GUID] is nil
 					icon.active = nil
 					if icon.maxcharges then
@@ -946,10 +967,10 @@ local function PAB_OnUpdate(self,elapsed)
 							icon.Start(icon.cooldown, true)
 						end
 					end
-					if db.hidden then PAB:UpdateIcons() end
 				end
 			end
 		end
+		PAB:UpdateIcons()
 		
 		-- Update Timers
 		if #timers > 0 then
@@ -966,8 +987,12 @@ local function PAB_OnUpdate(self,elapsed)
 	end
 end
 
+-- resets all icons on zone change
 function PAB:StopAllIcons()
-	for k,v in ipairs(iconlist) do v.Stop() end
+	for k,v in ipairs(iconlist) do
+		v.Stop()
+		v.seen = nil
+	end
 	wipe(activeGUIDS)
 end
 
@@ -980,12 +1005,15 @@ local function PAB_OnLoad(self)
 	self:RegisterEvent("GROUP_ROSTER_UPDATE")
 	self:RegisterEvent("UNIT_OTHER_PARTY_CHANGED")
 	self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	if self.useCrossAddonCommunication then self:RegisterEvent("CHAT_MSG_ADDON") end
 	self:RegisterEvent("INSPECT_READY")
 	self:SetScript("OnEvent",function(self,event,...) if self[event] then self[event](self,...) end end)
 	
 	PABDB = PABDB or { abilities = defaultAbilities, scale = 1  }
 	db = PABDB
+	print("Careful, using default DB!!!")
+	db.abilities = defaultAbilities
 
 	self:CreateAnchors()
 	self:UpdateAnchors()
@@ -997,7 +1025,7 @@ local function PAB_OnLoad(self)
 	
 	self:SetScript("OnUpdate",PAB_OnUpdate)
 	
-	print("Party Ability Bars by Kollektiv (update by Teea). Type /pab to open options")
+	print("Party Ability Bars by Kollektiv (updated by Schaka). Type /pab to open options")
 end
 
 function PAB:FindAbilityIcon(ability, id)
@@ -1273,6 +1301,7 @@ function PAB:CreateAbilityEditor()
 					"WARLOCK", "Warlock",
 					"HUNTER", "Hunter",
 					"MONK", "Monk",
+					"DEMONHUNTER", "Demon Hunter",
 	      },
 	     'default', 'MAGE',
 	     'getFunc', function() return db.classSelected end ,
