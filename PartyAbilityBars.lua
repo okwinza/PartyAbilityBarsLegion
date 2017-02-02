@@ -11,15 +11,11 @@ local GetSpellInfo = GetSpellInfo
 local UnitClass = UnitClass
 local UnitGUID = UnitGUID
 local UnitName = UnitName
-local IsInInstance = IsInInstance  
-local SendAddonMessage = SendAddonMessage
+local IsInInstance = IsInInstance
 local GetNumSubgroupMembers = GetNumSubgroupMembers
 local CooldownFrame_Set = CooldownFrame_Set
 
 local SPELLIDUPPER = 232434 		-- Teea Note: To find new highest spell ID go here: http://www.wowhead.com/spells?filter=cr=14;crs=2;crv=232434
-local CommPrefix  = "PABop31ms337x" -- Receive ability and cooldown
-local CommPrefix2 = "PABm4d4f4k4l0" -- Send GUID for syncing
-local CommPrefix3 = "PABl0lz3r1n4h" -- Receive GUID for syncing
 
 local db
 local pGUID
@@ -34,7 +30,6 @@ PABTooltip:SetHeight(200)
 
 local iconlist = {}
 local anchors = {}
-local syncGUIDS = {}
 local activeGUIDS = {}
 
 local function print(...)
@@ -452,7 +447,7 @@ function PAB:FindCompactRaidFrameByUnit(unit)
 	for i=1, 5 do
 		local frame = _G["CompactRaidFrame"..i]
 		if frame and frame.unit and UnitGUID(frame.unit) == UnitGUID(unit) then
-			return frame
+			return frame:GetName()
 		end
 	end
 end
@@ -490,7 +485,7 @@ function PAB:CreateAnchors()
 		anchor:SetMovable(true)
 		anchor:Show()
 		anchor.icons = {}
-		anchor.HideIcons = function() for k,icon in ipairs(anchor.icons) do icon:Hide() end end
+		anchor.HideIcons = function() for k,icon in ipairs(anchor.icons) do icon:Hide(); icon.inUse = nil end end
 		anchor:SetScript("OnMouseDown",function(self,button) if button == "LeftButton" and not db.attach then self:StartMoving() end end)
 		anchor:SetScript("OnMouseUp",function(self,button) if button == "LeftButton" and not db.attach then self:StopMovingOrSizing(); PAB:SavePositions() end end)
 		anchors[i] = anchor
@@ -551,11 +546,12 @@ local function CreateIcon(anchor)
 			icon.starttime = GetTime()
 		end
 		icon:Show()
-		icon.active = true; 
+		icon.active = true;
+
+        activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 		activeGUIDS[icon.GUID][icon.ability] = activeGUIDS[icon.GUID][icon.ability] or {}
 		activeGUIDS[icon.GUID][icon.ability].starttime = icon.starttime
 		activeGUIDS[icon.GUID][icon.ability].cooldown =  icon.cooldown
-		if db.hidden then PAB:UpdateIcons() end
 	end
 	
 	icon.Stop = function()
@@ -608,11 +604,6 @@ function PAB:AddIcon(icons,anchor)
 	return newicon
 end
 
-function PAB:RequestSync()
-	wipe(syncGUIDS)
-	if self.useCrossAddonCommunication then SendAddonMessage(CommPrefix2, pGUID .. "|" .. GetTime(), "PARTY") end
-end
-
 -- hides anchors currently not in use due to too few party members
 function PAB:ToggleAnchorDisplay()
 	-- Player (Test):
@@ -634,10 +625,11 @@ end
 -- also sets attributes for each icon frame
 function PAB:UpdateAnchor(unit, i)
 		local _,class = UnitClass(unit)
-		if not class then return end
+        local guid = UnitGUID(unit)
+		if not class or not guid then return end
+
 		local anchor = anchors[i]
-		anchor.GUID = UnitGUID(unit)
-		if not anchor.GUID then return end
+		anchor.GUID = guid
 		anchor.class = class
 		local icons = anchor.icons 
 		local numIcons = 1
@@ -651,6 +643,8 @@ function PAB:UpdateAnchor(unit, i)
 			icon.abilityID = id
 			icon.cooldown = cooldown
 			icon.showing = true
+			icon.inUse = true
+            icon.spec = nil
 
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
@@ -662,6 +656,8 @@ function PAB:UpdateAnchor(unit, i)
 		elseif icons[1] and icons[1].ability == PvPTrinketName then
 			icons[1]:Hide()
 			icons[1].showing = nil
+			icons[1].inUse = nil
+            icons[1].spec = nil
 			table.remove(icons, 1)
 		end
 		-- Abilities [All Specs]:
@@ -675,6 +671,8 @@ function PAB:UpdateAnchor(unit, i)
 			icon.cooldown = cooldown
 			icon.maxcharges = maxcharges
 			icon.chargesText:SetText(maxcharges or "")
+			icon.inUse = true
+            icon.spec = nil
 
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
@@ -697,6 +695,7 @@ function PAB:UpdateAnchor(unit, i)
 				icon.cooldown = cooldown
 				icon.maxcharges = maxcharges
 				icon.chargesText:SetText(maxcharges or "")
+				icon.inUse = true
 				icon.spec = true
 
 				activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
@@ -708,6 +707,14 @@ function PAB:UpdateAnchor(unit, i)
 				numIcons = numIcons + 1
 			end
 		end
+
+		-- clean leftover icons
+		for j=numIcons,#icons do
+			icons[j].spec = nil
+			icons[j].seen = nil
+			icons[j].inUse = nil
+		end
+
 		self:ToggleIconDisplay(i)
 end
 
@@ -719,11 +726,11 @@ function PAB:ToggleIconDisplay(i)
 	local lastActiveIndex = 0;
 	-- hiding all icons before anchoring and deciding whether to show them
 	for k, icon in pairs(icons) do
-		if icon and icon.ability then
+		if icon and icon.ability and icon.inUse then
 			if icon.spec then
 				icon.showing = (not db.hidden and icon.seen) or (db.hidden and activeGUIDS[icon.GUID][icon.ability])
 			else
-				icon.showing = activeGUIDS[icon.GUID][icon.ability] or not db.hidden
+				icon.showing = activeGUIDS[icon.GUID] and activeGUIDS[icon.GUID][icon.ability] or not db.hidden
 			end
 			icon:ClearAllPoints()
 			icon:Hide()
@@ -760,7 +767,7 @@ end
 
 function PAB:UpdateIcons()
 	-- Player (Test):
-	if db.showSelf and anchors[5] then self:ToggleIconDisplay(5) end
+	if db.showSelf and anchors[5] then self:UpdateAnchor(5) end
 	-- Party members:
 	for i=1, GetNumSubgroupMembers() do
 		self:UpdateAnchor(i)
@@ -791,7 +798,6 @@ function PAB:GroupUpdate()
 	if not pGUID then pGUID = UnitGUID("player") end
 	if not pName then pName = UnitName("player") .. "-" .. GetRealmName() end
 	self:LoadPositions()
-	self:RequestSync()
 	self:UpdateAnchors()
 end
 
@@ -814,7 +820,6 @@ function PAB:PLAYER_ENTERING_WORLD()
 	if not pGUID then pGUID = UnitGUID("player") end
 	if not pName then pName = UnitName("player") .. "-" .. GetRealmName() end
 	self:LoadPositions()
-	self:RequestSync()
 	self:UpdateAnchors()
 end
 
@@ -845,6 +850,7 @@ function PAB:StartCooldown(spellName, unit, cooldown)
 	local index = match(unit, "party[pet]*([1-4])")
 
 	if unit == "player" or unit == "pet" then
+		if(not db.showSelf ) then return end
 		unit = "player"
 		index = 5
 	elseif index then
@@ -895,44 +901,9 @@ function PAB:TrackCooldown(anchor, ability, cooldown)
 	end
 end
 
-function PAB:CHAT_MSG_ADDON(prefix, message, dist, sender)
-	if dist == "RAID" and sender ~= pName then
-	--if dist == "PARTY" then -- debug only
-		if prefix == CommPrefix then
-			local GUID, ability, cooldown, spellID = match(message,"(.+)|(.+)|(.+)|(.+)")
-			self:StartCooldown(ability, self:GetUnitByGUID(GUID), cooldown)
-		elseif prefix == CommPrefix2 then
-			local GUID, guidTime = match(message, "(.+)|(.+)")
-			SendAddonMessage(CommPrefix3, pGUID, "PARTY")
-		elseif prefix == CommPrefix3 then
-			for i=1, GetNumSubgroupMembers() do if UnitGUID("party"..i) == message then syncGUIDS[message] = anchors[i] end end
-			if UnitGUID("player") == message then syncGUIDS[message] = anchors[5] end  	-- debug only
-		end
-	end
-end
 
-function PAB:SendCooldownMessage(ability, cooldown, spellID)
-	if self.useCrossAddonCommunication then SendAddonMessage(CommPrefix, pGUID .. "|" .. ability .. "|" .. cooldown .. "|" .. spellID, "PARTY") end
-end
-
-function PAB:SendCooldown(ability, rep)
-	if not self.useCrossAddonCommunication then return end
-	local start, duration, enabled = GetSpellCooldown(ability)
-	--print("Sending: " .. ability .. " | " .. start + duration - GetTime())
-	if not start then return end
-	local spellID = select(7, GetSpellInfo(ability))
-	if enabled == 0 or not rep then
-		self:Schedule(0.05, self.SendCooldown, ability, true)
-		return 
-	elseif start > 0 and duration > 0 then
-		self:SendCooldownMessage(ability, start + duration - GetTime(), spellID)
-	end
-end
 
 function PAB:UNIT_SPELLCAST_SUCCEEDED(unit, ability)
-	if (unit == "player" or unit == "pet") and ability then self:SendCooldown(ability, nil) end
-	--if syncGUIDS[UnitGUID(unit)] then return end  -- with this it won't use the local detection for other PAB users but instead it will rely on syncing with other PAB users
-	-- Send stuff to other PAB users:
 	if ability then
 		self:StartCooldown(ability, unit);
 	end
@@ -997,23 +968,18 @@ function PAB:StopAllIcons()
 end
 
 local function PAB_OnLoad(self)
-	if RegisterAddonMessagePrefix(CommPrefix) and RegisterAddonMessagePrefix(CommPrefix2) and RegisterAddonMessagePrefix(CommPrefix3) then
-		self.useCrossAddonCommunication = true
-	end
+
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("GROUP_JOINED")
 	self:RegisterEvent("GROUP_ROSTER_UPDATE")
 	self:RegisterEvent("UNIT_OTHER_PARTY_CHANGED")
 	self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-	if self.useCrossAddonCommunication then self:RegisterEvent("CHAT_MSG_ADDON") end
 	self:RegisterEvent("INSPECT_READY")
 	self:SetScript("OnEvent",function(self,event,...) if self[event] then self[event](self,...) end end)
 	
 	PABDB = PABDB or { abilities = defaultAbilities, scale = 1  }
 	db = PABDB
-	print("Careful, using default DB!!!")
-	db.abilities = defaultAbilities
 
 	self:CreateAnchors()
 	self:UpdateAnchors()
@@ -1024,6 +990,20 @@ local function PAB_OnLoad(self)
 	self:UpdateScrollBar()
 	
 	self:SetScript("OnUpdate",PAB_OnUpdate)
+
+	-- thanks BigDebuffs
+	hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
+		local name = frame:GetName()
+		if not name or not name:match("^Compact") or not db.attach then return end
+		for k,anchor in ipairs(anchors) do
+			local raidFrame = PAB:FindCompactRaidFrameByUnit(k==5 and "player" or "party"..k)
+			if name == raidFrame then
+				anchors[k]:ClearAllPoints()
+				anchors[k]:SetPoint(db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT", raidFrame, db.growLeft and "TOPLEFT" or "TOPRIGHT", db.offsetX, db.offsetY)
+			end
+		end
+	end)
+
 	
 	print("Party Ability Bars by Kollektiv (updated by Schaka). Type /pab to open options")
 end
