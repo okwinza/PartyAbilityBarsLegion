@@ -728,9 +728,9 @@ function PAB:ToggleIconDisplay(i)
 	for k, icon in pairs(icons) do
 		if icon and icon.ability and icon.inUse then
 			if icon.spec then
-				icon.showing = (not db.hidden and icon.seen) or (db.hidden and activeGUIDS[icon.GUID][icon.ability])
+				icon.showing = (not db.hidden and icon.seen) or (db.hidden and activeGUIDS[icon.GUID][icon.ability] and icon.active)
 			else
-				icon.showing = activeGUIDS[icon.GUID] and activeGUIDS[icon.GUID][icon.ability] or not db.hidden
+				icon.showing = (activeGUIDS[icon.GUID] and activeGUIDS[icon.GUID][icon.ability] and icon.active) or (not db.hidden)
 			end
 			icon:ClearAllPoints()
 			icon:Hide()
@@ -767,10 +767,10 @@ end
 
 function PAB:UpdateIcons()
 	-- Player (Test):
-	if db.showSelf and anchors[5] then self:UpdateAnchor(5) end
+	if db.showSelf and anchors[5] then self:ToggleIconDisplay(5) end
 	-- Party members:
 	for i=1, GetNumSubgroupMembers() do
-		self:UpdateAnchor(i)
+		self:ToggleIconDisplay(i)
 	end
 end
 
