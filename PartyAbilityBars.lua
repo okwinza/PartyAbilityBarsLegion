@@ -712,7 +712,9 @@ function PAB:UpdateAnchor(unit, i)
 		for j=numIcons,#icons do
 			icons[j].spec = nil
 			icons[j].seen = nil
+			icons[j].active = nil
 			icons[j].inUse = nil
+			icons[j].showing = nil
 		end
 
 		self:ToggleIconDisplay(i)
@@ -732,9 +734,9 @@ function PAB:ToggleIconDisplay(i)
 			else
 				icon.showing = (activeGUIDS[icon.GUID] and activeGUIDS[icon.GUID][icon.ability] and icon.active) or (not db.hidden)
 			end
-			icon:ClearAllPoints()
-			icon:Hide()
 		end
+		icon:ClearAllPoints()
+		icon:Hide()
 	end
 
 	for k, icon in pairs(icons) do
