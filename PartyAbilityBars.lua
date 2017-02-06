@@ -264,7 +264,7 @@ local StoneformName = GetSpellInfo(20594)
 local AdaptedName = GetSpellInfo(195901)
 local WillOfTheForsakenName = GetSpellInfo(7744)
 
-local PvPTrinket = { ability = PvPTrinketName, cooldown = 120, id = UnitFactionGroup("player") == "Horde" and 51378 or 51377 }
+local PvPTrinket = { ability = PvPTrinketName, cooldown = 120, id = 208683 }
 
 local function convertspellids(t)
 	local temp = {}
@@ -1074,7 +1074,13 @@ local function PAB_OnLoad(self)
 end
 
 function PAB:FindAbilityIcon(ability, id)
-	return GetSpellTexture(self:FindAbilityID(ability))
+	local icon;
+	if id then
+		icon = GetSpellTexture(id)
+	else
+		icon = GetSpellTexture(self:FindAbilityID(ability))
+	end
+	return icon
 end
 
 function PAB:FindAbilityID(ability)
