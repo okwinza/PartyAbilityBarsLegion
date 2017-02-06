@@ -1,9 +1,9 @@
 --[[
 	Schaka TODO:
 	Check talents and honor talents for spells to activate/deactivate items?
-	Only show spells upon activation (allows to list all spells without clutter)
 ]]
 
+local name, SPELLDB = ...
 local lower = string.lower
 local match = string.match
 local remove = table.remove
@@ -15,7 +15,9 @@ local IsInInstance = IsInInstance
 local GetNumSubgroupMembers = GetNumSubgroupMembers
 local CooldownFrame_Set = CooldownFrame_Set
 
-local SPELLIDUPPER = 232434 		-- Teea Note: To find new highest spell ID go here: http://www.wowhead.com/spells?filter=cr=14;crs=2;crv=232434
+local CommPrefix  = "PABop31ms337x" -- Receive ability and cooldown
+local CommPrefix2 = "PABm4d4f4k4l0" -- Send GUID for syncing
+local CommPrefix3 = "PABl0lz3r1n4h" -- Receive GUID for syncing
 
 local db
 local pGUID
@@ -30,6 +32,7 @@ PABTooltip:SetHeight(200)
 
 local iconlist = {}
 local anchors = {}
+local syncGUIDS = {}
 local activeGUIDS = {}
 
 local function print(...)
@@ -39,13 +42,6 @@ local function print(...)
 end
 
 local InArena = function() return (select(2,IsInInstance()) == "arena") end
-
-local _iconPaths = {}
-local iconPaths = {
-	[20594] = 1, -- Stoneform
-}
-for k in pairs(iconPaths) do _iconPaths[GetSpellInfo(k)] = select(3,GetSpellInfo(k)) end
-iconPaths = _iconPaths
 
 local validUnits = {
 	["player"] = true,
@@ -63,6 +59,7 @@ local validUnits = {
 local defaultAbilities = {
 	["DRUID"] = {
 		["ALL"] = {	-- All specs
+			{5211, 50}, -- Mighty Bash
 		},
 		[102] = {	-- Balance
 			{22812, 60},    -- Barkskin
@@ -94,19 +91,19 @@ local defaultAbilities = {
 	},
 	["MAGE"] = 	{
 		["ALL"] = {	-- All specs
-			{198111, 45}, -- Temporal Shield
+			{198111, 45, false, talent="honor"}, -- Temporal Shield
 			{2139, 24}, 	-- Counterspell
 			{45438, 240},   -- Ice Block
+			{113724, 45, false, talent="spec"}, -- Ring of Frost
 		},
 		[62] = {	-- Arcane
 		},
 		[63] = {	-- Fire
 			{31661, 20}, -- Dragon's Breath
 			{86949, 300}, -- Cauterize
-			{113724, 45}, -- Ring of Frost
 		},
 		[64] = {	-- Frost
-			{113724, 45}, -- Ring of Frost
+
 		},
 	},
 	["PALADIN"] = {
@@ -115,12 +112,13 @@ local defaultAbilities = {
 			{66115, 15}, 	-- Hand of Freedom
 		},
 		[65] = {	-- Holy
-			{20066, 15}, -- Repentance
+			{20066, 15, false, talent="spec"}, -- Repentance
 			{150630, 300, 2}, -- Hand of Protection
 			{6940, 150, 2}, -- Blessing of Sacrifice
-			{115750, 90}, -- Blinding Light
+			{115750, 90, false, talent="spec"}, -- Blinding Light
 			{642, 300}, -- Divine Shield
-			{31842, 120}, -- Avenging Wrath
+			{216331, 60, false, talent="spec"}, -- Avenging Crusader
+			{31842, 120, false, talent="spec"}, -- Avenging Wrath, is replaced by crusader and should be implicitly hidden
 		},
 		[66] = {	-- Protection
 			{96231, 15}, -- Rebuke
@@ -129,7 +127,7 @@ local defaultAbilities = {
 		[70] = {	-- Retribution
 			{642, 240}, -- Divine Shield
 			{96231, 15},  -- Rebuke
-			{115750, 90}, -- Blinding Light
+			{115750, 90, false, talent="spec"}, -- Blinding Light
 			{150630, 300}, -- Hand of Protection
 		},
 	},
@@ -167,7 +165,7 @@ local defaultAbilities = {
 		},
 		[261] = {	-- Subtlety
 			{5277, 120}, -- Evasion
-			{76577, 180},  	-- Smoke Bomb
+			{76577, 180, false, talent="honor"},  -- Smoke Bomb
 		},
 	},
 	["SHAMAN"] = {
@@ -187,26 +185,24 @@ local defaultAbilities = {
 		["ALL"] = {	-- All specs
 			{19647, 24}, 	-- Spell Lock
 			{104773, 180}, -- Unending Resolve
-			{6789, 45}, -- Mortal Coil
+			{6789, 45, false, talent="spec"}, -- Mortal Coil
+			{108416, 60, false, talent="spec"}, -- Dark Pact
+			{212295, 45, false, talent="honor"}, -- Nether Ward
 		},
 		[265] = {	-- Affliction
-			{108416, 60}, -- Dark Pact
-			{212295, 45}, -- Nether Ward
 		},
 		[266] = {	-- Demonology
 		},
 		[267] = {	-- Destruction
-			{108416, 60}, -- Dark Pact
-			{212295, 45}, -- Nether Ward
 		},
 	},
 	["WARRIOR"] = {
 		["ALL"] = {	-- All specs
 			{6552, 15}, 	-- Pummel
+			{236077, 30, false, talent="honor"}, -- Disarm
+			{107570, 30, false, talent="spec"}, -- Storm Bolt
 		},
 		[71] = {	-- Arms
-			{236077, 30}, -- Disarm
-			{107570, 30}, -- Storm Bolt
 			{5246, 90}, 	-- Intimidating Shout
 			{118038, 180}, -- Die by the Sword
 		},
@@ -234,6 +230,8 @@ local defaultAbilities = {
 	},
 	["MONK"] = {
 		["ALL"] = {	-- All specs
+			{119996, 25}, -- Transcendence:Transfer (Monk port)
+			{119381, 45, false, talent="spec"}, -- Leg Sweep
 		},
 		[268] = {	-- Brewmaster
 		},
@@ -263,6 +261,7 @@ local defaultAbilities = {
 local PvPTrinketName = GetSpellInfo(208683)
 local EveryManForHimselfName = GetSpellInfo(59752) 
 local StoneformName = GetSpellInfo(20594)
+local AdaptedName = GetSpellInfo(195901)
 local WillOfTheForsakenName = GetSpellInfo(7744)
 
 local PvPTrinket = { ability = PvPTrinketName, cooldown = 120, id = UnitFactionGroup("player") == "Horde" and 51378 or 51377 }
@@ -276,7 +275,7 @@ local function convertspellids(t)
 			temp[class][spec] = {}
 			for k, spell in pairs(spells) do
 				local spellInfo = GetSpellInfo(spell[1])
-				if spellInfo then temp[class][spec][#temp[class][spec]+1] = { ability = spellInfo, cooldown = spell[2], id = spell[1], maxcharges = spell[3] } end
+				if spellInfo then temp[class][spec][#temp[class][spec]+1] = { ability = spellInfo, cooldown = spell[2], id = spell[1], maxcharges = spell[3], talent = spell.talent } end
 			end
 		end
 	end
@@ -662,7 +661,7 @@ function PAB:UpdateAnchor(unit, i)
 		end
 		-- Abilities [All Specs]:
 		for abilityIndex, abilityTable in pairs(db.abilities[class]["ALL"]) do
-			local ability, id, cooldown, maxcharges = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges
+			local ability, id, cooldown, maxcharges, talent = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges, abilityTable.talent
 			local icon = icons[numIcons] or self:AddIcon(icons,anchor)
 			icon.texture:SetTexture(self:FindAbilityIcon(ability, id))
 			icon.GUID = anchor.GUID
@@ -672,7 +671,7 @@ function PAB:UpdateAnchor(unit, i)
 			icon.maxcharges = maxcharges
 			icon.chargesText:SetText(maxcharges or "")
 			icon.inUse = true
-            icon.spec = nil
+            icon.spec = talent
 
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
@@ -686,7 +685,7 @@ function PAB:UpdateAnchor(unit, i)
 		local unitSpec = tostring(self:GetSpecByGUID(anchor.GUID))
 		if unitSpec and unitSpec ~= "0" and unitSpec ~= "ALL" and unitSpec ~= "nil" then
 			for abilityIndex, abilityTable in pairs(db.abilities[class][unitSpec]) do
-				local ability, id, cooldown, maxcharges = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges
+				local ability, id, cooldown, maxcharges, talent = abilityTable.ability, abilityTable.id, abilityTable.cooldown, abilityTable.maxcharges, abilityTable.talent
 				local icon = icons[numIcons] or self:AddIcon(icons,anchor)
 				icon.texture:SetTexture(self:FindAbilityIcon(ability, id))
 				icon.GUID = anchor.GUID
@@ -696,7 +695,7 @@ function PAB:UpdateAnchor(unit, i)
 				icon.maxcharges = maxcharges
 				icon.chargesText:SetText(maxcharges or "")
 				icon.inUse = true
-				icon.spec = true
+				icon.spec = talent
 
 				activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 				if activeGUIDS[icon.GUID][icon.ability] then
@@ -800,6 +799,7 @@ function PAB:GroupUpdate()
 	if not pGUID then pGUID = UnitGUID("player") end
 	if not pName then pName = UnitName("player") .. "-" .. GetRealmName() end
 	self:LoadPositions()
+	self:RequestSync()
 	self:UpdateAnchors()
 end
 
@@ -822,12 +822,13 @@ function PAB:PLAYER_ENTERING_WORLD()
 	if not pGUID then pGUID = UnitGUID("player") end
 	if not pName then pName = UnitName("player") .. "-" .. GetRealmName() end
 	self:LoadPositions()
+	self:RequestSync()
 	self:UpdateAnchors()
 end
 
 function PAB:COMBAT_LOG_EVENT_UNFILTERED(timestamp, event, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellId, spellName, spellSchool, auraType)
 	if(event == "SPELL_AURA_APPLIED" ) then
-		self:StartCooldown(spellName, self:GetUnitByGUID(sourceName))
+		self:StartCooldown(spellName, self:GetUnitByGUID(sourceGUID))
 	end
 end
 
@@ -866,9 +867,16 @@ function PAB:StartCooldown(spellName, unit, cooldown)
 	local spec = tostring(self:GetSpecByUnit(unit))
 	local cAbility = self:FindAbilityByName(db.abilities[class]["ALL"], spellName) or self:FindAbilityByName(db.abilities[class][spec], spellName)
 	if cooldown and cAbility then cAbility.cooldown = cooldown end
+
+	-- 30 second trinket trigger
 	if spellName == StoneformName or spellName == WillOfTheForsakenName or spellName == EveryManForHimselfName then
 		spellName = PvPTrinketName
 		cAbility = {cooldown = 30}
+	end
+
+	if spellName == AdaptedName then
+		spellName = PvPTrinketName
+		cAbility = {cooldown = 60}
 	end
 
 	self:TrackCooldown(anchor, spellName, cAbility and cAbility.cooldown or nil)
@@ -906,6 +914,8 @@ end
 
 
 function PAB:UNIT_SPELLCAST_SUCCEEDED(unit, ability)
+	if (unit == "player" or unit == "pet") and ability then self:SendCooldown(ability) end
+
 	if ability then
 		self:StartCooldown(ability, unit);
 	end
@@ -969,7 +979,59 @@ function PAB:StopAllIcons()
 	wipe(activeGUIDS)
 end
 
+function PAB:RequestSync()
+	wipe(syncGUIDS)
+	if self.useCrossAddonCommunication then self:SendAddonMessage(CommPrefix2, pGUID .. "|" .. GetTime(), "PARTY") end
+end
+
+function PAB:CHAT_MSG_ADDON(prefix, message, dist, sender)
+	if dist == "PARTY" and sender ~= pName then
+		--if dist == "PARTY" then -- debug only
+		if prefix == CommPrefix then
+			local GUID, ability, cooldown, spellID = match(message,"(.+)|(.+)|(.+)|(.+)")
+			if syncGUIDS[GUID] then
+				self:StartCooldown(GetSpellInfo(spellID), self:GetUnitByGUID(GUID), cooldown)
+			end
+		elseif prefix == CommPrefix2 then
+			local GUID, guidTime = match(message, "(.+)|(.+)")
+			self:SendAddonMessage(CommPrefix3, pGUID, "PARTY")
+		elseif prefix == CommPrefix3 then
+			for i=1, GetNumSubgroupMembers() do if UnitGUID("party"..i) == message then syncGUIDS[message] = anchors[i] end end
+			if UnitGUID("player") == message then syncGUIDS[message] = anchors[5] end  	-- debug only
+		end
+	end
+end
+
+function PAB:SendAddonMessage(prefix, message, dest, target)
+	--thanks Jax!
+	local chl = strlower(dest)
+	if (chl == "raid" and GetNumGroupMembers(LE_PARTY_CATEGORY_HOME) == 0) or (chl == "party" and GetNumGroupMembers(LE_PARTY_CATEGORY_HOME) == 0) or (chl == "guild" and not IsInGuild()) then
+		return
+	end
+	SendAddonMessage(prefix, message, dest, target)
+end
+
+-- sends message to your party via addon communication
+function PAB:SendCooldown(ability)
+	if not self.useCrossAddonCommunication then return end
+	local start, duration, enabled = GetSpellCooldown(ability)
+	--print("Sending: " .. ability .. " | " .. start + duration - GetTime())
+	if not start then return end
+	local spellID = select(7, GetSpellInfo(ability))
+	-- events can fire before GetSpellCooldown actually returns anything, these events are then scheduled to be checked again
+	if enabled == 0 then
+		self:Schedule(0.05, self.SendCooldown, ability)
+		return
+	elseif start > 0 and duration > 0 then
+		self:SendAddonMessage(CommPrefix, pGUID .. "|" .. ability .. "|" .. (start + duration - GetTime()) .. "|" .. spellID, "PARTY")
+	end
+end
+
 local function PAB_OnLoad(self)
+
+	if RegisterAddonMessagePrefix(CommPrefix) and RegisterAddonMessagePrefix(CommPrefix2) and RegisterAddonMessagePrefix(CommPrefix3) then
+		self.useCrossAddonCommunication = true
+	end
 
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("GROUP_JOINED")
@@ -977,6 +1039,7 @@ local function PAB_OnLoad(self)
 	self:RegisterEvent("UNIT_OTHER_PARTY_CHANGED")
 	self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	if self.useCrossAddonCommunication then self:RegisterEvent("CHAT_MSG_ADDON") end
 	self:RegisterEvent("INSPECT_READY")
 	self:SetScript("OnEvent",function(self,event,...) if self[event] then self[event](self,...) end end)
 	
@@ -1011,26 +1074,19 @@ local function PAB_OnLoad(self)
 end
 
 function PAB:FindAbilityIcon(ability, id)
-	if iconPaths[ability] then return iconPaths[ability] end
-	local isItem = ability == PvPTrinketName and id
-	if id then
-		if isItem then
-			local _icon = GetItemIcon(id)
-			iconPaths[ability] = _icon
-			return _icon
-		else
-			local _ability,_,_icon = GetSpellInfo(id)
-			if _ability and _ability == ability then
-				iconPaths[ability] = _icon
-				return _icon
-			end
-		end
-	else
-		for _id=SPELLIDUPPER,1,-1 do
-			local _ability,_,_icon = GetSpellInfo(_id)
-			if _ability and _ability == ability then
-				iconPaths[ability] = _icon
-				return _icon
+	return GetSpellTexture(self:FindAbilityID(ability))
+end
+
+function PAB:FindAbilityID(ability)
+	for _,S in pairs(SPELLDB) do
+		for _,v in pairs(S) do
+			for _,sp in pairs(v) do
+				for _,SPELLID in pairs(sp) do
+					local spellName, spellRank, spellIcon = GetSpellInfo(SPELLID)
+					if(spellName == ability) then
+						return SPELLID
+					end
+				end
 			end
 		end
 	end
@@ -1337,7 +1393,7 @@ function PAB:CreateAbilityEditor()
 	local maxchargeseditbox = CreateEditBox("Max Charges",scrollframe,50,25)
 	maxchargeseditbox:SetPoint("LEFT",cdeditbox,"RIGHT",15,0)
 	scrollframe.maxchargeseditbox = maxchargeseditbox
-	
+
 	local addbutton = panel:MakeButton(
 	     'name', 'Add/Edit',
 	     'description', "Add a new ability with a specified cooldown. Don't worry about capitalization, the ability will be properly formatted",

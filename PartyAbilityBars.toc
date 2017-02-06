@@ -6,5 +6,17 @@
 
 libs\LibStub\LibStub.lua
 libs\LibSimpleOptions-1.01\lib.xml
+libs\Spells\spell_lib_mage.lua
+libs\Spells\spell_lib_paladin.lua
+libs\Spells\spell_lib_warrior.lua
+Libs\Spells\spell_lib_druid.lua
+libs\Spells\spell_lib_dknight.lua
+libs\Spells\spell_lib_hunter.lua
+libs\Spells\spell_lib_priest.lua
+libs\Spells\spell_lib_rogue.lua
+libs\Spells\spell_lib_shaman.lua
+libs\Spells\spell_lib_warlock.lua
+libs\Spells\spell_lib_monk.lua
+libs\Spells\spell_lib_dhunter.lua
 
 PartyAbilityBars.lua
