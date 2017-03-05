@@ -62,9 +62,11 @@ local defaultAbilities = {
 			{5211, 50}, -- Mighty Bash
 		},
 		[102] = {	-- Balance
+			{78675, 60}, -- Solar Beam
 			{22812, 60},    -- Barkskin
 		},
 		[103] = {	-- Feral
+			{106839, 15}, -- Skull Bash
 			{61336, 120, 2}, -- Survival Instincts
 		},
 		[104] = {	-- Guardian
@@ -154,7 +156,7 @@ local defaultAbilities = {
 	},
 	["ROGUE"] = {
 		["ALL"] = {	-- All specs
-			{1766, 10}, 	-- Kick
+			{1766, 15}, 	-- Kick
 			{2094, 120}, 	-- Blind
 			{31224, 90},   	-- Cloak of Shadows
 		},
@@ -236,6 +238,7 @@ local defaultAbilities = {
 		[268] = {	-- Brewmaster
 		},
 		[269] = {	-- Windwalker
+			{116705, 15}, -- Spear Hand Strike
 			{122470, 90}, -- Touch of Karma
 		},
 		[270] = {	-- Mistweaver
