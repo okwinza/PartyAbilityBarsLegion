@@ -570,8 +570,10 @@ local function CreateIcon(anchor)
 	
 	local texture = icon:CreateTexture(nil,"ARTWORK")
 	texture:SetAllPoints(true)
-	texture:SetTexCoord(0.07,0.9,0.07,0.90)
+	
 	icon.texture = texture
+
+	PAB:ApplyIconTextureBorder(icon)
 
 	icon.chargesText = icon:CreateFontString(nil, "string", "GameFontNormal")
 	icon.chargesText:SetTextColor(1, 1, 1)
@@ -604,6 +606,15 @@ function PAB:AddIcon(icons,anchor)
 	iconlist[#iconlist+1] = newicon
 	icons[#icons+1] = newicon
 	return newicon
+end
+
+-- applies texture border to an icon
+function PAB:ApplyIconTextureBorder(icon)
+    if db.showIconBorders then
+		icon.texture:SetTexCoord(0,1,0,1)
+	else
+		icon.texture:SetTexCoord(0.07,0.9,0.07,0.90)
+	end
 end
 
 -- hides anchors currently not in use due to too few party members
@@ -648,6 +659,8 @@ function PAB:UpdateAnchor(unit, i)
 			icon.inUse = true
             icon.spec = nil
 
+			PAB:ApplyIconTextureBorder(icon)
+
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
 				icon.SetTimer(activeGUIDS[icon.GUID][ability].starttime,activeGUIDS[icon.GUID][ability].cooldown)
@@ -676,6 +689,8 @@ function PAB:UpdateAnchor(unit, i)
 			icon.inUse = true
             icon.spec = talent
 
+			PAB:ApplyIconTextureBorder(icon)
+
 			activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 			if activeGUIDS[icon.GUID][icon.ability] then
 				icon.SetTimer(activeGUIDS[icon.GUID][ability].starttime,activeGUIDS[icon.GUID][ability].cooldown)
@@ -699,6 +714,8 @@ function PAB:UpdateAnchor(unit, i)
 				icon.chargesText:SetText(maxcharges or "")
 				icon.inUse = true
 				icon.spec = talent
+
+				PAB:ApplyIconTextureBorder(icon)
 
 				activeGUIDS[icon.GUID] = activeGUIDS[icon.GUID] or {}
 				if activeGUIDS[icon.GUID][icon.ability] then
@@ -744,9 +761,9 @@ function PAB:ToggleIconDisplay(i)
 	for k, icon in pairs(icons) do
 		if icon and icon.ability and icon.showing then
 			if count == 1 then
-				icon:SetPoint(db.growLeft and "TOPRIGHT" or "TOPLEFT", anchor, db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT")
+				icon:SetPoint(db.growLeft and "TOPRIGHT" or "TOPLEFT", anchor, db.growLeft and "BOTTOMLEFT" or "BOTTOMRIGHT", db.growLeft and -1 * db.iconOffsetX or db.iconOffsetX, 0)
 			else
-				icon:SetPoint(db.growLeft and "RIGHT" or "LEFT", icons[lastActiveIndex], db.growLeft and "LEFT" or "RIGHT")
+				icon:SetPoint(db.growLeft and "RIGHT" or "LEFT", icons[lastActiveIndex], db.growLeft and "LEFT" or "RIGHT", db.growLeft and -1 * db.iconOffsetX or db.iconOffsetX, 0)
 			end
 			lastActiveIndex = k
 			count = count + 1
@@ -1202,6 +1219,24 @@ function PAB:CreateOptions()
 	end)
 	panel.offsetY = offsetY
 
+	local iconOffsetX = CreateEditBox("Icon Offset X", panel, 50, 25)
+	iconOffsetX:SetText(db.iconOffsetX or "0")
+	iconOffsetX:SetCursorPosition(0)
+	iconOffsetX:SetPoint("LEFT", offsetY, "RIGHT", 10, 0)
+	iconOffsetX:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+		local num = self:GetText():match("%-?%d+$")
+		if num then
+			print("Icon Offset X changed and saved: " .. tostring(num))
+			db.iconOffsetX = num
+			PAB:LoadPositions(); PAB:ApplyAnchorSettings();
+		else
+			print("Wrong value for Icon Offset X")
+			self:SetText(db.iconOffsetX)
+		end
+	end)
+	panel.iconOffsetX = iconOffsetX
+
 	local lock = panel:MakeToggle(
 	     'name', 'Lock',
 	     'description', 'Show/hide anchors',
@@ -1257,6 +1292,14 @@ function PAB:CreateOptions()
 	     'getFunc', function() return db.showTooltip end,
 	     'setFunc', function(value) db.showTooltip = value; end)
 	showTooltip:SetPoint("TOP",showSelf,"BOTTOM",0,-5)
+
+	local showIconBorders = panel:MakeToggle(
+	     'name', 'Draw borders for icons',
+	     'description', 'Draw borders for cooldown icons',
+	     'default', false,
+	     'getFunc', function() return db.showIconBorders end,
+	     'setFunc', function(value) db.showIconBorders = value; PAB:ApplyAnchorSettings() PAB:UpdateAnchors() end)
+	showIconBorders:SetPoint("TOP",showTooltip,"BOTTOM",0,-5)
 	
 	local title2, subText2 = panel:MakeTitleTextAndSubText("Ability editor","Change what party member abilities are tracked")
 	title2:ClearAllPoints()
