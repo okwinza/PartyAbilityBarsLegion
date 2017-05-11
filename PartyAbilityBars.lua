@@ -587,7 +587,6 @@ local function CreateIcon(anchor)
 			PABTooltip:ClearLines()
 			PABTooltip:SetOwner(WorldFrame, "ANCHOR_CURSOR")
 			PABTooltip:SetSpellByID(icon.abilityID)
-			print(icon.abilityID)
 		end
 	end)
 	icon:SetScript('OnLeave', function()
@@ -1298,7 +1297,7 @@ function PAB:CreateOptions()
 	     'description', 'Draw borders for cooldown icons',
 	     'default', false,
 	     'getFunc', function() return db.showIconBorders end,
-	     'setFunc', function(value) db.showIconBorders = value; PAB:ApplyAnchorSettings() PAB:UpdateAnchors() end)
+	     'setFunc', function(value) db.showIconBorders = value; PAB:UpdateAnchors() end)
 	showIconBorders:SetPoint("TOP",showTooltip,"BOTTOM",0,-5)
 	
 	local title2, subText2 = panel:MakeTitleTextAndSubText("Ability editor","Change what party member abilities are tracked")
